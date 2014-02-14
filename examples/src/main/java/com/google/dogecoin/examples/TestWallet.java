@@ -1,3 +1,5 @@
+package com.google.dogecoin.examples;
+
 import java.io.File;
 
 import com.google.dogecoin.core.AbstractPeerEventListener;

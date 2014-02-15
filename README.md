@@ -17,14 +17,15 @@ www.wowdoge.org
 
 Credits
 =======
-Wow - Doge Wallet was developed with use of DogecoinJ library Doge Coin fork of BitcoinJ library developed by LangerHans. https://github.com/langerhans/dogecoinj-new.
-
-Donations
-=========
-
-DLoawzLvw5WvvpGUkSTxrwMgKhkamsqFo7
+Wow - Doge Wallet was developed with use of DogecoinJ library Doge Coin fork of BitcoinJ library developed by langerhans. https://github.com/langerhans/dogecoinj-new.
 
 Contact
 =======
 
 info[at]wowdoge.org
+
+
+Donations
+=========
+
+DLoawzLvw5WvvpGUkSTxrwMgKhkamsqFo7

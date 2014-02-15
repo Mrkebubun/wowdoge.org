@@ -1,5 +1,5 @@
-wowdoge.org
-===========
+Wow - Doge Wallet
+=================
 
 Light Way SPV Doge Coin Wallet.
 

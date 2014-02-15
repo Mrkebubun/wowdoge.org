@@ -11,7 +11,7 @@ Downloads & Screenshots
 =======================
 For Windows, Mac OS X, Linux. www.wowdoge.org
 
-Credits and Dependecies
+Credits & Dependecies
 ===========
 Wow - Doge Wallet uses langerhans DogecoinJ library, Doge Coin fork of BitcoinJ library. https://github.com/langerhans/dogecoinj-new.
 

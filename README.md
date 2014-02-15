@@ -13,7 +13,7 @@ For Windows, Mac OS X, Linux. www.wowdoge.org
 
 Credits
 =======
-Wow - Doge Wallet uses DogecoinJ library, Doge Coin fork of SPV BitcoinJ library. https://github.com/langerhans/dogecoinj-new.
+Wow - Doge Wallet uses DogecoinJ library, Doge Coin fork of BitcoinJ library. https://github.com/langerhans/dogecoinj-new.
 
 Contact
 =======

@@ -15,6 +15,10 @@ Screenshots
 ===========
 www.wowdoge.org
 
+Credits
+=======
+DogecoinJ library and support by LangerHans https://github.com/langerhans/dogecoinj-new.
+
 Donations
 =========
 

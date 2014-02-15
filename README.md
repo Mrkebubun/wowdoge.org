@@ -1,7 +1,7 @@
 Wow - Doge Wallet
 =================
 
-Light way Simplified Payment Verification (SPV) Doge Coin desktop wallet.
+Light way Simplified Payment Verification (SPV) Doge Coin desktop Wallet.
 
 About
 =====

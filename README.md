@@ -13,7 +13,7 @@ For Windows, Mac OS X, Linux. www.wowdoge.org
 
 Credits & Dependecies
 ===========
-Wow - Doge Wallet uses langerhans DogecoinJ library, Doge Coin fork of BitcoinJ library. https://github.com/langerhans/dogecoinj-new.
+Wow - Doge Wallet uses langerhans DogecoinJ library for accessing Doge Coin network, Doge Coin fork of BitcoinJ library. https://github.com/langerhans/dogecoinj-new.
 
 Contact
 =======

@@ -61,6 +61,10 @@ import java.awt.CardLayout;
 
 import javax.swing.SpringLayout;
 
+import org.slf4j.LoggerFactory;
+
+import ch.qos.logback.classic.LoggerContext;
+
 import com.google.dogecoin.core.Address;
 import com.google.dogecoin.core.AddressFormatException;
 import com.google.dogecoin.core.ECKey;
@@ -73,6 +77,16 @@ import com.google.dogecoin.params.MainNetParams;
 import com.google.dogecoin.wallet.WalletTransaction;
 
 //import net.miginfocom.swing.MigLayout;
+
+
+
+
+
+
+
+
+
+
 
 
 import java.awt.Color;
@@ -125,6 +139,23 @@ import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.awt.Toolkit;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.ConsoleAppender;
+import ch.qos.logback.core.rolling.FixedWindowRollingPolicy;
+import ch.qos.logback.core.rolling.RollingFileAppender;
+import ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy;
+import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
+import ch.qos.logback.core.util.StatusPrinter;
+
+import org.slf4j.LoggerFactory;
+
+import uk.org.lidalia.sysoutslf4j.context.SysOutOverSLF4J;
+
+
 public class Wow implements Runnable {
 
 	private JFrame frmWow;
@@ -153,10 +184,100 @@ public class Wow implements Runnable {
 	private JMenu mnFile;
 	private RecentFilesMenu mnRecent;
 
+	private static void initLogging()
+	{
+		final File logDir = new File(System.getProperty("user.home")); //new File("."); //getDir("log", Constants.TEST ? Context.MODE_WORLD_READABLE : MODE_PRIVATE);
+		final File logFile = new File(logDir, "wowdoge.log");
+
+		final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
+
+		final PatternLayoutEncoder filePattern = new PatternLayoutEncoder();
+		filePattern.setContext(context);
+		filePattern.setPattern("%d{HH:mm:ss.SSS} [%thread] %logger{0} - %msg%n");
+		filePattern.start();
+
+		final RollingFileAppender<ILoggingEvent> fileAppender = new RollingFileAppender<ILoggingEvent>();
+		fileAppender.setContext(context);
+		fileAppender.setFile(logFile.getAbsolutePath());
+
+		final TimeBasedRollingPolicy<ILoggingEvent> rollingPolicy = new TimeBasedRollingPolicy<ILoggingEvent>();
+		rollingPolicy.setContext(context);
+		rollingPolicy.setParent(fileAppender);
+		rollingPolicy.setFileNamePattern(logDir.getAbsolutePath() + "/wallet.%d.log.gz");
+		rollingPolicy.setMaxHistory(7);
+		rollingPolicy.start();
+
+		fileAppender.setEncoder(filePattern);
+		fileAppender.setRollingPolicy(rollingPolicy);
+		fileAppender.start();
+
+		final PatternLayoutEncoder logcatTagPattern = new PatternLayoutEncoder();
+		logcatTagPattern.setContext(context);
+		logcatTagPattern.setPattern("%logger{0}");
+		logcatTagPattern.start();
+
+		final PatternLayoutEncoder logcatPattern = new PatternLayoutEncoder();
+		logcatPattern.setContext(context);
+		logcatPattern.setPattern("[%thread] %msg%n");
+		logcatPattern.start();
+
+		//final LogcatAppender logcatAppender = new LogcatAppender();
+		//logcatAppender.setContext(context);
+		//logcatAppender.setTagEncoder(logcatTagPattern);
+		//logcatAppender.setEncoder(logcatPattern);
+		//logcatAppender.start();
+
+		final ch.qos.logback.classic.Logger log = context.getLogger(Logger.ROOT_LOGGER_NAME);
+		log.addAppender(fileAppender);
+		//log.addAppender(logcatAppender);
+		log.setLevel(Level.INFO);//Level.INFO);
+		
+		SysOutOverSLF4J.sendSystemOutAndErrToSLF4J();
+	}
+	
 	/**
 	 * Launch the application.
 	 */
 	public static void main(String[] args) {
+		initLogging();
+//		LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+//
+//	    RollingFileAppender rfAppender = new RollingFileAppender();
+//	    rfAppender.setContext(loggerContext);
+//	    rfAppender.setFile("testFile.log");
+//	    FixedWindowRollingPolicy rollingPolicy = new FixedWindowRollingPolicy();
+//	    rollingPolicy.setContext(loggerContext);
+//	    // rolling policies need to know their parent
+//	    // it's one of the rare cases, where a sub-component knows about its parent
+//	    rollingPolicy.setParent(rfAppender);
+//	    rollingPolicy.setFileNamePattern("testFile.%i.log.zip");
+//	    rollingPolicy.start();
+//
+//	    SizeBasedTriggeringPolicy triggeringPolicy = new ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy();
+//	    triggeringPolicy.setMaxFileSize("5MB");
+//	    triggeringPolicy.start();
+//
+//	    PatternLayoutEncoder encoder = new PatternLayoutEncoder();
+//	    encoder.setContext(loggerContext);
+//	    encoder.setPattern("%-4relative [%thread] %-5level %logger{35} - %msg%n");
+//	    encoder.start();
+//
+//	    rfAppender.setEncoder(encoder);
+//	    rfAppender.setRollingPolicy(rollingPolicy);
+//	    rfAppender.setTriggeringPolicy(triggeringPolicy);
+//
+//	    rfAppender.start();
+//
+//	    // attach the rolling file appender to the logger of your choice
+//	    Logger logbackLogger = loggerContext.getLogger("Main");
+//	    logbackLogger.addAppender(rfAppender);
+//
+//	    // OPTIONAL: print logback internal status messages
+//	    StatusPrinter.print(loggerContext);
+//
+//	    // log something
+//	    logbackLogger.debug("hello");
+		
 		try {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
             System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Wow - Doge Wallet");

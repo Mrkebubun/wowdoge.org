@@ -16,18 +16,32 @@
 
 package org.wowdoge;
 
+import com.google.dogecoin.crypto.KeyCrypter;
 import com.google.common.util.concurrent.Service.State;
 import com.google.dogecoin.core.Wallet;
 
+import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
+import java.io.FileReader;
+import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.CharBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.prefs.Preferences;
 
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
+
+import org.bitcoinj.wallet.Protos.Wallet.EncryptionType;
+import org.spongycastle.crypto.params.KeyParameter;
+import org.wowdoge.crypto.KeyCrypterOpenSSL;
+import org.wowdoge.file.PrivateKeyAndDate;
+import org.wowdoge.file.PrivateKeysHandler;
+import org.wowdoge.file.PrivateKeysHandlerException;
 
 import com.google.dogecoin.core.AbstractPeerEventListener;
 import com.google.dogecoin.core.AbstractWalletEventListener;
@@ -44,14 +58,13 @@ import com.google.dogecoin.core.Utils;
 import com.google.dogecoin.params.MainNetParams;
 import com.google.dogecoin.utils.Threading;
 import com.google.dogecoin.wallet.WalletTransaction;
-import com.google.dogecoin.core.Utils.*;
 import com.google.dogecoin.crypto.KeyCrypterException;
 
 public class CoreWallet {
 
 	private CoreWalletAppKit appKit = null;
 	private boolean dirty = false;
-	private int synchronizing = 0;
+	private int synchronizing = -1;
 	private String walletFilePath;
 	private Preferences preferences;
 	//private String applicationDataDirectory;
@@ -74,6 +87,8 @@ public class CoreWallet {
 	}
 
 	public void run(final File directory, final String fileName) throws Exception {
+		dirty = false;
+		synchronizing = -1;
 		NetworkParameters params = MainNetParams.get();
 		
 		walletFilePath = new File(directory, fileName).getAbsolutePath();
@@ -142,6 +157,7 @@ public class CoreWallet {
 		if (!exists)
 			appKit.setCheckpoints(Wow.class.getResourceAsStream("/org/wowdoge/wowdoge.checkpoints"));
 		
+		appKit.setBlockingStartup(false);
 		appKit.start(); //startAndWait();
 	}
 	
@@ -207,10 +223,21 @@ public class CoreWallet {
 		appKit.wallet().decrypt(appKit.wallet().getKeyCrypter().deriveKey(password));
 	}
 	
-	public void createNewKeys(int number) {
+	public void createNewKeys(int number) throws KeyCrypterException {
+		createNewKeys(number, null);
+	}
+	
+	//System.out.println("keyProto.getPrivateKey().toByteArray() :" + keyProto.getPrivateKey());
+	//System.out.println("keyProto.getEncryptedPrivateKey(): " + keyProto.getEncryptedPrivateKey());
+	public void createNewKeys(int number, final CharSequence walletPassword) throws KeyCrypterException {
 		List<ECKey> keys = new ArrayList<ECKey>();
 		for (int i = 0; i < number; i++) {
 			ECKey key = new ECKey();
+			if (isEncrypted()) {
+				final KeyCrypter walletKeyCrypter = getWallet().getKeyCrypter();
+				KeyParameter aesKey = walletKeyCrypter.deriveKey(walletPassword);
+				key = key.encrypt(walletKeyCrypter, aesKey);
+			}
 			keys.add(key);
 		}
 		appKit.wallet().addKeys(keys);
@@ -218,6 +245,167 @@ public class CoreWallet {
 	
 	public java.util.List<ECKey> getKeys() {
 		return appKit.wallet().getKeys();
+	}
+	
+	public void exportPrivateKeysToFile(String fileName, CharSequence password, boolean performEncryptionOfExportFile, CharSequence exportPassword) throws IOException, KeyCrypterException, PrivateKeysHandlerException {
+		PrivateKeysHandler h = new PrivateKeysHandler(getNetworkParameters());
+		h.exportPrivateKeys(new File(fileName), getWallet(), appKit.chain(), performEncryptionOfExportFile, exportPassword, password);
+		
+//		boolean isEncrypted = isEncrypted();
+//		if (isEncrypted)
+//			decrypt(password);
+//		try {
+//			PrintWriter out = new PrintWriter(fileName);
+//			List<ECKey> keys = appKit.wallet().getKeys();
+//			for (ECKey k : keys) {
+//				out.println(k.getPrivateKeyEncoded(getNetworkParameters())
+//						.toString());
+//			}
+//			out.close();
+//		} finally {
+//			if (isEncrypted)
+//				encrypt(password);
+//		}
+	}
+	
+	public void importPrivateKeys(Collection<PrivateKeyAndDate> privateKeyAndDateArray, CharSequence walletPassword) throws KeyCrypterException, PrivateKeysHandlerException, Exception {
+		boolean keyEncryptionRequired = false;
+		Collection<byte[]> unencryptedWalletPrivateKeys = new ArrayList<byte[]>();
+        Date earliestTransactionDate = new Date(org.wowdoge.utils.DateUtils.nowUtc().getMillis());
+        if (appKit.wallet().getEncryptionType() != EncryptionType.UNENCRYPTED) {
+            keyEncryptionRequired = true;
+        }
+        
+        try {
+        	// Work out what the unencrypted private keys are.
+            com.google.dogecoin.crypto.KeyCrypter walletKeyCrypter = appKit.wallet().getKeyCrypter();
+            KeyParameter aesKey = null;
+            if (keyEncryptionRequired) {
+                if (walletKeyCrypter == null) {
+                    System.err.println("Missing KeyCrypter. Could not decrypt private keys.");
+                }
+                aesKey = walletKeyCrypter.deriveKey(CharBuffer.wrap(walletPassword));
+            }
+            
+            for (ECKey ecKey : getKeys()) {
+                if (keyEncryptionRequired) {
+                    if (ecKey.getEncryptedPrivateKey() == null
+                            || ecKey.getEncryptedPrivateKey().getEncryptedBytes() == null
+                            || ecKey.getEncryptedPrivateKey().getEncryptedBytes().length == 0) {
+
+                    	System.err.println("Missing encrypted private key bytes for key " + ecKey.toString()
+                                + ", enc.priv = "
+                                + Utils.bytesToHexString(ecKey.getEncryptedPrivateKey().getEncryptedBytes()));
+                    } else {
+                        byte[] decryptedPrivateKey = ecKey.getKeyCrypter().decrypt(
+                                ecKey.getEncryptedPrivateKey(), aesKey);
+                        unencryptedWalletPrivateKeys.add(decryptedPrivateKey);
+                    }
+
+                } else {
+                    // Wallet is not encrypted.
+                    unencryptedWalletPrivateKeys.add(ecKey.getPrivKeyBytes());
+                }
+            }
+            
+         // Keep track of earliest transaction date go backwards from now.
+            if (privateKeyAndDateArray != null) {
+                for (PrivateKeyAndDate privateKeyAndDate : privateKeyAndDateArray) {
+                    ECKey keyToAdd = privateKeyAndDate.getKey();
+                    if (keyToAdd != null) {
+                        if (privateKeyAndDate.getDate() != null) {
+                            keyToAdd.setCreationTimeSeconds(privateKeyAndDate.getDate().getTime()
+                                    / 1000); //NUMBER_OF_MILLISECONDS_IN_A_SECOND
+                        }
+
+                        if (!keyChainContainsPrivateKey(unencryptedWalletPrivateKeys, keyToAdd, walletPassword)) {
+                            if (keyEncryptionRequired) {
+                                ECKey encryptedKey = new ECKey(walletKeyCrypter.encrypt(
+                                        keyToAdd.getPrivKeyBytes(), aesKey), keyToAdd.getPubKey(),
+                                        walletKeyCrypter);
+                                appKit.wallet().addKey(encryptedKey);
+                            } else {
+                            	appKit.wallet().addKey(keyToAdd);
+                            }
+
+                            // Update earliest transaction date.
+                            if (privateKeyAndDate.getDate() == null) {
+                                // Need to go back to the genesis block.
+                                earliestTransactionDate = null;
+                            } else {
+                                if (earliestTransactionDate != null) {
+                                    earliestTransactionDate = earliestTransactionDate.before(privateKeyAndDate
+                                            .getDate()) ? earliestTransactionDate : privateKeyAndDate.getDate();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+        	// Wipe the work collection of private key bytes to remove it from memory.
+            for (byte[] privateKeyBytes : unencryptedWalletPrivateKeys) {
+                if (privateKeyBytes != null) {
+                    for (int i = 0; i < privateKeyBytes.length; i++) {
+                        privateKeyBytes[i] = 0;
+                    }
+                }
+            }
+        }
+	}
+	
+    /**
+     * Determine whether the key is already in the wallet.
+     * @throws KeyCrypterException
+     */
+    private boolean keyChainContainsPrivateKey(Collection<byte[]> unencryptedPrivateKeys, ECKey keyToAdd, CharSequence walletPassword) throws KeyCrypterException {
+        if (unencryptedPrivateKeys == null || keyToAdd == null) {
+            return false;
+        } else {
+            byte[] unencryptedKeyToAdd = new byte[0];
+            if (keyToAdd.isEncrypted()) {
+                unencryptedKeyToAdd = keyToAdd.getKeyCrypter().decrypt(keyToAdd.getEncryptedPrivateKey(), keyToAdd.getKeyCrypter().deriveKey(walletPassword));
+            }
+            for (byte[] loopEncryptedPrivateKey : unencryptedPrivateKeys) { 
+                if (Arrays.equals(unencryptedKeyToAdd, loopEncryptedPrivateKey)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+	
+	public Collection<PrivateKeyAndDate> readInPrivateKeysFromFile(String fileName, CharSequence privateKeysFilePassword) throws IOException, KeyCrypterException, PrivateKeysHandlerException {
+		PrivateKeysHandler h = new PrivateKeysHandler(getNetworkParameters());
+		Collection<PrivateKeyAndDate> p = h.readInPrivateKeys(new File(fileName), privateKeysFilePassword);
+		return p;
+	}
+	
+	public boolean isImportedPrivateKeyFileEncrypted(File file) throws IOException {
+		BufferedReader reader = null;
+		try {
+			reader = new BufferedReader(new FileReader(file));
+        String firstLine = reader.readLine();
+
+        return (firstLine != null && firstLine.startsWith(new KeyCrypterOpenSSL().getOpenSSLMagicText()));
+		} finally {
+			reader.close();
+		}
+	}
+	
+	public void sync() throws Exception { //Date from
+//		System.out.println("About to restart PeerGroup.");   
+//		appKit.peerGroup().stopAndWait();
+//		System.out.println("PeerGroup is now stopped.");
+//		// Close the blockstore and recreate a new one.
+//		appKit.store()
+		//synchronizing = 0;
+		
+		stop();
+		File f = new File(getWalletFilePath());
+		String spvFilePath = getSPVFilePath(new File(f.getParentFile(),"dogecoins.dogespvchain").getAbsolutePath());
+		new File(spvFilePath).delete();
+		run();
 	}
 	
 	public java.math.BigInteger getBalance() {
@@ -262,6 +450,13 @@ public class CoreWallet {
 	
 	public void saveToFile(java.io.File temp, java.io.File destFile) throws java.io.IOException {
 		appKit.wallet().saveToFile(temp, destFile);
+	}
+	
+	public final State state() {
+		if (appKit != null)
+			return appKit.state();
+		else
+			return State.NEW;
 	}
 	
 	public final boolean isRunning() {

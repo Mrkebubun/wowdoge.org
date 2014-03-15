@@ -48,7 +48,7 @@ class AddressBookTableModel extends AbstractTableModel {
         private String[] columnNames = {"Name",
         								"Address",
         								"Description",
-                                        "Amount"
+                                        "Amount [DOGE]"
                                         };
         private Object[][] data = {
         {"Kathy", "Smith",

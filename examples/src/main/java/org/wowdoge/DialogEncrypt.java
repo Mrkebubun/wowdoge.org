@@ -54,6 +54,7 @@ public class DialogEncrypt extends JDialog {
 	private JPasswordField passwordField;
 	private JPasswordField passwordFieldRepeat;
 	private boolean dialogResultOK = false;
+	private JTextArea txtrWarning;
 
 	/**
 	 * Launch the application.
@@ -127,13 +128,13 @@ public class DialogEncrypt extends JDialog {
 				JScrollPane scrollPane = new JScrollPane();
 				panelWarning.add(scrollPane);
 				{
-					JTextArea txtrWarning = new JTextArea();
+					txtrWarning = new JTextArea();
 					txtrWarning.setForeground(Color.RED);
 					txtrWarning.setBackground(SystemColor.window);
 					txtrWarning.setWrapStyleWord(true);
 					txtrWarning.setLineWrap(true);
 					txtrWarning.setEditable(false);
-					txtrWarning.setText("WARNING: Encrypt wallet with password should help to protect wallet. But if you encrypt wallet with password and you loose or forget password, there is not any way to decrypt your wallet! That means that in that case you will have no access to your coins any more! There is no any way to help you in that case! There is not any recovery option!\n\nSo be very careful!\n\nWrite the password to paper and store it to safe box. To multiple places at home.\nDo not forget your password!\n\nBe very careful!\n\nDo everything you can to protect your password!");
+					txtrWarning.setText("WARNING: Encrypt wallet with password should help to protect wallet. But if you encrypt wallet with password and you loose or forget password, there is not any way to decrypt your wallet! That means that in that case you will have no access to your coins any more! There is not any way to help you in that case! There is not any recovery option!\n\nSo be very careful!\n\nWrite the password to paper and store it to safe box. To multiple places at home.\nDo not forget your password!\n\nBe very careful!\n\nDo everything you can to protect your password!");
 					scrollPane.setViewportView(txtrWarning);
 				}
 			}
@@ -177,6 +178,10 @@ public class DialogEncrypt extends JDialog {
 		setModal(true);
 		setVisible(true);
 		return dialogResultOK;
+	}
+	
+	public void setWarning(String text) {
+		txtrWarning.setText(text);
 	}
 	
 	public char [] getPassword() {

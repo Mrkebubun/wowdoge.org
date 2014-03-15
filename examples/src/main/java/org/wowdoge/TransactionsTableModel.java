@@ -16,14 +16,21 @@
 
 package org.wowdoge;
 
+import java.util.Date;
 import java.util.List;
 
+import javax.swing.JLabel;
 import javax.swing.JTable;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+
 import java.awt.Component;
 
+import com.google.dogecoin.core.ScriptException;
 import com.google.dogecoin.core.Transaction;
+import com.google.dogecoin.core.TransactionInput;
+import com.google.dogecoin.core.TransactionOutput;
+import com.google.dogecoin.core.Utils;
 import com.google.dogecoin.core.Wallet;
 
 import static com.google.dogecoin.core.Utils.bitcoinValueToFriendlyString;
@@ -38,11 +45,33 @@ class TransactionsTableCellRenderer extends DefaultTableCellRenderer {
     @Override
     public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
     	TransactionsTableModel model = (TransactionsTableModel) table.getModel();
-        Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-        c.setBackground(model.getRowColour(row));
-        c.setForeground(Color.WHITE);
+    	Component c;
+        c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column); //label = new Label(value.toString());
+		c.setBackground(model.getRowColour(table.convertRowIndexToModel(row)));
+		c.setForeground(Color.WHITE);
+		//System.out.println("TEST");
+   
         return c;
     }
+    
+    @Override 
+    public void setValue(Object aValue) {
+        Object result = aValue;
+        if (aValue != null) {
+        	if (aValue instanceof Date) {
+				// System.out.println(aValue);
+				Date value = (Date) aValue;
+				String text = DateFormat.getDateTimeInstance(DateFormat.MEDIUM,
+						DateFormat.SHORT, Locale.getDefault()).format(value);
+				setText(text);
+        	} else if (aValue instanceof BigInteger) {
+        		BigInteger value = (BigInteger) aValue;
+        		setText(bitcoinValueToFriendlyString(value));
+        	} else
+        		super.setValue(result);
+        } else
+        	super.setValue(result);
+      }   
 }
 
 class TransactionsTableModel extends AbstractTableModel {
@@ -51,12 +80,15 @@ class TransactionsTableModel extends AbstractTableModel {
 		private Wallet wallet;
 		private Color green = new Color(0x008f00, false);
 		private Color red = new Color(0xce443e, false);
+		//private boolean advanced = false;
 		
-        private String[] columnNames = {"",
+        private String[] columnNames = {"Type",
         								"Date",
-                                        "Amount",
+                                        "Amount [DOGE]",
                                         "Hash",
-                                        "Confidence"
+                                        "Confidence",
+                                        "Ins",
+                                        "Outs"
                                         };
         private Object[][] data = {
         {"Kathy", "Smith",
@@ -76,9 +108,17 @@ class TransactionsTableModel extends AbstractTableModel {
         	this.wallet = wallet;
         	fireTableDataChanged();
         }
+        
+//        public void setAdvancedView(boolean value) {
+//        	this.advanced = value;
+//        	fireTableStructureChanged();
+//        }
  
         public int getColumnCount() {
-            return columnNames.length;
+        	//if (advanced)
+        		return columnNames.length;
+        	//else
+        	//	return columnNames.length - 2;
         }
  
         public int getRowCount() {
@@ -92,30 +132,62 @@ class TransactionsTableModel extends AbstractTableModel {
             return columnNames[col];
         }
  
-        public Object getValueAt(int row, int col) {
-        	Transaction t = transactions.get(row);
-        	switch (col) {
+        @SuppressWarnings("deprecation")
+		public Object getValueAt(int row, int col) {
+        	if (transactions == null)
+        		return "";
+        	if (row < transactions.size()) {
+        		Transaction t = transactions.get(row);
+        		switch (col) {
         		case 0:
         			if (t.getValue(wallet).compareTo(BigInteger.ZERO) < 0)
-                		return "SENT";
-                	else
-                		return "RECEIVED";
+        				return "SENT";
+        			else
+        				return "RECEIVED";
         		case 4:
         			return t.getConfidence();
+        		case 5:
+        			String tempText = new String("");
+        			List<TransactionInput> ins = t.getInputs();
+        			for (TransactionInput i : ins) {
+        				try {
+        					TransactionOutput output = i.getOutpoint().getConnectedOutput();
+        					if (output != null)
+        						tempText = tempText + Utils.bitcoinValueToFriendlyString(output.getValue()) + " " + i.getFromAddress().toString() + " ";
+        					else
+        						tempText = tempText + " " + i.getFromAddress().toString() + " ";
+        				} catch (ScriptException e) {
+        					tempText = tempText + "COINBASE" + " ";
+        				}
+        				//System.out.println(i.getFromAddress());
+        			}
+        			return tempText; //t.getInputs().toString();
+        		case 6:
+        			String tempText1 = new String("");
+        			List<TransactionOutput> outs = t.getOutputs();
+        			for (TransactionOutput o : outs) {
+        				tempText1 = tempText1 + Utils.bitcoinValueToFriendlyString(o.getValue()) + " " + o.getScriptPubKey().getToAddress(o.getParams()).toString() + " "; //toString()
+        				//System.out.println(i.getFromAddress());
+        			}
+        			return tempText1; //t.getOutputs().toString();
         		case 1:
-        			return DateFormat.getDateTimeInstance(
-                            DateFormat.MEDIUM, 
-                            DateFormat.SHORT, 
-                            Locale.getDefault()).format(t.getUpdateTime());
+        			return t.getUpdateTime();
+        			//        					DateFormat.getDateTimeInstance(
+        			//                            DateFormat.MEDIUM, 
+        			//                            DateFormat.SHORT, 
+        			//                            Locale.getDefault()).format(t.getUpdateTime());
         		case 3:
         			return t.getHashAsString();
         		case 2:
         			if (wallet != null)
-        				return bitcoinValueToFriendlyString(t.getValue(wallet));
+        				return t.getValue(wallet); //new Float(bitcoinValueToFriendlyString(
         			else
         				return "";
+        		}
+        		return data[row][col];
+        	} else {
+        		return "";
         	}
-            return data[row][col];
         }
         
         public Color getRowColour(int row) {

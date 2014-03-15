@@ -89,12 +89,12 @@ public class DialogAbout extends JDialog {
 				contentPanel.add(panel, BorderLayout.NORTH);
 				panel.setLayout(new BorderLayout(0, 0));
 				{
-					JLabel lblWowDoge = new JLabel("Wow - Doge Wallet");
+					JLabel lblWowDoge = new JLabel("WowDoge");
 					panel.add(lblWowDoge, BorderLayout.NORTH);
 					lblWowDoge.setHorizontalAlignment(SwingConstants.CENTER);
 				}
 				{
-					JLabel lblVersion = new JLabel("Version 0.1.1 beta");
+					JLabel lblVersion = new JLabel("Version 0.2.1");
 					lblVersion.setFont(new Font("Lucida Grande", Font.PLAIN, 10));
 					lblVersion.setHorizontalAlignment(SwingConstants.CENTER);
 					panel.add(lblVersion, BorderLayout.SOUTH);
@@ -107,7 +107,7 @@ public class DialogAbout extends JDialog {
 			contentPanel.add(btnWwwwowdogeorg);
 		}
 		{
-			JLabel lblCopyrightWow = new JLabel("Copyright 2014 Wow Doge Wallet Developers");
+			JLabel lblCopyrightWow = new JLabel("Copyright 2014 WowDoge Developers");
 			lblCopyrightWow.setHorizontalAlignment(SwingConstants.CENTER);
 			contentPanel.add(lblCopyrightWow, BorderLayout.SOUTH);
 		}

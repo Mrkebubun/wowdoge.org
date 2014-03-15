@@ -61,6 +61,7 @@ import java.awt.CardLayout;
 
 import javax.swing.SpringLayout;
 
+import org.wowdoge.viewsystem.swing.view.PrivateKeyFileFilter;
 import org.slf4j.LoggerFactory;
 
 import ch.qos.logback.classic.LoggerContext;
@@ -89,6 +90,17 @@ import com.google.dogecoin.wallet.WalletTransaction;
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.FlowLayout;
@@ -103,17 +115,25 @@ import javax.swing.JToggleButton;
 
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.prefs.BackingStoreException;
 
 import javax.swing.event.ListSelectionListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.table.TableColumn;
 
 import static com.google.dogecoin.core.Utils.bitcoinValueToFriendlyString;
 
@@ -152,8 +172,12 @@ import ch.qos.logback.core.rolling.TimeBasedRollingPolicy;
 import ch.qos.logback.core.util.StatusPrinter;
 
 import org.slf4j.LoggerFactory;
+import org.wowdoge.file.PrivateKeyAndDate;
+import org.wowdoge.file.PrivateKeysHandler;
+import org.wowdoge.file.PrivateKeysHandlerException;
 
 import uk.org.lidalia.sysoutslf4j.context.SysOutOverSLF4J;
+import javax.swing.JCheckBoxMenuItem;
 
 
 public class Wow implements Runnable {
@@ -183,6 +207,33 @@ public class Wow implements Runnable {
 	private JList listAddresses;
 	private JMenu mnFile;
 	private RecentFilesMenu mnRecent;
+	private JButton btnStatus;
+	private JPanel panelAddresses;
+	private JButton buttonZoomOut;
+	private Component horizontalStrutZoomOut;
+	private JSplitPane splitPaneWallet;
+	private JMenuItem mntmExit;
+	private static String OS = System.getProperty("os.name").toLowerCase();
+	private JMenuItem mntmAbout;
+	private JCheckBoxMenuItem chckbxmntmTransactionsInputsOutputs;
+	private TableColumn colIns;
+	private TableColumn colOuts;
+	
+	public static boolean isWindows() {
+		return (OS.indexOf("win") >= 0);
+	}
+	
+	public static boolean isMac() {
+		return (OS.indexOf("mac") >= 0);
+	}
+ 
+	public static boolean isUnix() {
+		return (OS.indexOf("nix") >= 0 || OS.indexOf("nux") >= 0 || OS.indexOf("aix") > 0 );
+	}
+ 
+	public static boolean isSolaris() {
+		return (OS.indexOf("sunos") >= 0);
+	}
 
 	private static void initLogging()
 	{
@@ -203,7 +254,7 @@ public class Wow implements Runnable {
 		final TimeBasedRollingPolicy<ILoggingEvent> rollingPolicy = new TimeBasedRollingPolicy<ILoggingEvent>();
 		rollingPolicy.setContext(context);
 		rollingPolicy.setParent(fileAppender);
-		rollingPolicy.setFileNamePattern(logDir.getAbsolutePath() + "/wallet.%d.log.gz");
+		rollingPolicy.setFileNamePattern(logDir.getAbsolutePath() + "/wowdoge.%d.log.gz");
 		rollingPolicy.setMaxHistory(7);
 		rollingPolicy.start();
 
@@ -280,7 +331,7 @@ public class Wow implements Runnable {
 		
 		try {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
-            System.setProperty("com.apple.mrj.application.apple.menu.about.name", "Wow - Doge Wallet");
+            System.setProperty("com.apple.mrj.application.apple.menu.about.name", "WowDoge");
             //System.setProperty("com.apple.mrj.application.growbox.intrudes", "false");
             //System.setProperty("com.apple.mrj.application.live-resize", "true");
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -328,6 +379,14 @@ public class Wow implements Runnable {
 		transactionsTableModel = new TransactionsTableModel();
 		tableTransactions.setModel(transactionsTableModel);
 		tableTransactions.setDefaultRenderer(Object.class, new TransactionsTableCellRenderer());
+		TableColumn column = tableTransactions.getColumnModel().getColumn(1);
+		column.setCellRenderer(new TransactionsTableCellRenderer());
+		column = tableTransactions.getColumnModel().getColumn(2);
+		TransactionsTableCellRenderer r = new TransactionsTableCellRenderer(); 
+		r.setHorizontalAlignment(SwingConstants.RIGHT);
+		column.setCellRenderer(r);
+		colOuts = tableTransactions.getColumnModel().getColumn(tableTransactions.getColumnCount() - 1);
+		colIns = tableTransactions.getColumnModel().getColumn(tableTransactions.getColumnCount() - 2);
 		addressBookTableModel = new AddressBookTableModel(coreWallet.getPreferences());
 		tableAddressBook.setModel(addressBookTableModel);
 		try {
@@ -384,9 +443,13 @@ public class Wow implements Runnable {
 				if (returnVal == JFileChooser.APPROVE_OPTION) {
 					try {
 						File file = fileChooser.getSelectedFile();
-						coreWallet.open(file);
-						mnRecent.addFileToFileHistory(file.getAbsolutePath());
-						mnRecent.storeToPreferences();
+						if (file.getName().equals("wallet.dat")) {
+							showInformationAboutSatoshisWalletDat();
+						} else {
+							coreWallet.open(file);
+							mnRecent.addFileToFileHistory(file.getAbsolutePath());
+							mnRecent.storeToPreferences();
+						}
 					} catch (IOException e) {
 						JOptionPane.showMessageDialog(frmWow,
 							    e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
@@ -433,13 +496,189 @@ public class Wow implements Runnable {
 		mntmSaveAs.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_S, InputEvent.META_MASK));
 		mnFile.add(mntmSaveAs);
 		
+		mntmExit = new JMenuItem("Exit");
+		mntmExit.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				System.exit(0);
+			}
+		});
+		mnFile.add(mntmExit);
+		mntmExit.setVisible(!isMac());
+		
+		JMenu mnView = new JMenu("View");
+		menuBar.add(mnView);
+		
+		chckbxmntmTransactionsInputsOutputs = new JCheckBoxMenuItem("Advanced");
+		chckbxmntmTransactionsInputsOutputs.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				//transactionsTableModel.setAdvancedView(chckbxmntmTransactionsInputsOutputs.getState());
+				coreWallet.getPreferences().putBoolean("ViewTransactionsInputsOutputs", chckbxmntmTransactionsInputsOutputs.getState());
+				if (chckbxmntmTransactionsInputsOutputs.getState()) {
+					tableTransactions.addColumn(colIns);
+					tableTransactions.addColumn(colOuts);
+				} else {
+					tableTransactions.removeColumn(colIns);
+					tableTransactions.removeColumn(colOuts);
+				}
+			}
+		});
+		mnView.add(chckbxmntmTransactionsInputsOutputs);
+		
+		JMenu mnTools = new JMenu("Tools");
+		menuBar.add(mnTools);
+		
+		JMenuItem mntmImportPrivateKeys = new JMenuItem("Import Private Keys");
+		mntmImportPrivateKeys.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				JFileChooser c = new JFileChooser();
+				PrivateKeyFileFilter filter = new PrivateKeyFileFilter();
+				c.setFileFilter(filter);
+				int rVal = c.showOpenDialog(frmWow);
+				if (rVal == JFileChooser.APPROVE_OPTION) {
+					File file = c.getSelectedFile();
+					if (filter.accept(file)) {
+                        try {
+                        	Collection<PrivateKeyAndDate> privateKeysAndDates = null;
+                        	if (coreWallet.isImportedPrivateKeyFileEncrypted(file)) {
+                        		String password;
+                        		DialogPassword d = new DialogPassword();
+                        		d.setTitle("Decrypt Private Keys File");
+            					d.setLocationRelativeTo(frmWow);
+            					if (d.showDialog()) {
+            						password = new String(d.getPassword());
+            					} else
+            						return;
+            					privateKeysAndDates = coreWallet.readInPrivateKeysFromFile(c.getSelectedFile().getAbsolutePath(), password);
+                        	} else {
+                        		privateKeysAndDates = coreWallet.readInPrivateKeysFromFile(c.getSelectedFile().getAbsolutePath(), null);
+                        	}
+                        	
+                        	Date replayDate = PrivateKeysHandler.calculateReplayDate(privateKeysAndDates, coreWallet.getWallet());
+                        	String replayDateString = null;
+                        	if (replayDate == null) {
+                        		replayDateString = "Missing Key Dates";
+                        	} else {
+                        		replayDateString = DateFormat.getDateInstance(DateFormat.MEDIUM, new Locale("en")).format(replayDate);
+                        	}
+
+                        	int dialogResult = JOptionPane.showConfirmDialog(frmWow, "Would you like to import private keys?\nNumber of Keys: " + privateKeysAndDates.size() + "\nReplay Date: " + replayDateString, "Confirm Import of Private Keys", JOptionPane.YES_NO_OPTION);
+            				if  (dialogResult == JOptionPane.YES_OPTION) {
+            					String password = null;
+            					if (coreWallet.isEncrypted()) {
+            						DialogPassword d = new DialogPassword();
+            						d.setLocationRelativeTo(frmWow);
+            						if (d.showDialog()) {
+            							password = new String(d.getPassword());
+            						} else
+            							return;
+            					}
+            					coreWallet.importPrivateKeys(privateKeysAndDates, password);
+            					coreWallet.sync();
+            				}
+                        } catch (IOException e) {
+                        	e.printStackTrace();
+        					JOptionPane.showMessageDialog(frmWow,
+        						    "Import private keys error!\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        } catch (KeyCrypterException e) {
+                            // TODO User may not have entered a password yet so
+                            // password incorrect is ok at this stage.
+                            // Other errors indicate a more general problem with
+                            // the
+                            // import.
+                        	e.printStackTrace();
+        					JOptionPane.showMessageDialog(frmWow,
+        						    "Import private keys error!\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        } catch (Exception e) {
+                        	e.printStackTrace();
+        					JOptionPane.showMessageDialog(frmWow,
+        						    "Import private keys error!\n" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                        }
+                    } 
+				}
+			}
+		});
+		mnTools.add(mntmImportPrivateKeys);
+		
+		JMenuItem mntmExportPrivateKeys = new JMenuItem("Export Private Keys");
+		mntmExportPrivateKeys.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				String password = null;
+				String passwordToEncrypt = null;
+				if (coreWallet.isEncrypted()) {
+					DialogPassword d = new DialogPassword();
+					d.setLocationRelativeTo(frmWow);
+					if (d.showDialog()) {
+						password = new String(d.getPassword());
+					} else
+						return;
+				}
+				int dialogResult = JOptionPane.showConfirmDialog(frmWow, "Would you like to encrypt exported private keys file to protect it?","Encrypt Exported Private Kyes File?",JOptionPane.YES_NO_OPTION);
+				boolean encryptExport = (dialogResult == JOptionPane.YES_OPTION);
+				if (encryptExport) {
+					DialogEncrypt d = new DialogEncrypt();
+					d.setTitle("Encrypt Exported Private Keys File with Password");
+					d.setWarning("WARNING: Encryption of exported private keys file should help to protect keys file. But if you loose or forget password, there is not any way to decrypt your encrypted private key file! There is not any way to help you in that case! There is not any recovery option! So be very careful! Write the password to paper and store it to safe box. To multiple places at home. Do not forget your password! Be very careful! Do everything you can to protect your password!");
+					d.setLocationRelativeTo(frmWow);
+					if (d.showDialog()) {
+						passwordToEncrypt = new String(d.getPassword());
+					} else {
+						return;
+					}
+				}
+				try {
+					JFileChooser c = new JFileChooser();
+					PrivateKeyFileFilter f = new PrivateKeyFileFilter();
+					c.setFileFilter(f);
+					int rVal = c.showSaveDialog(frmWow);
+					if (rVal == JFileChooser.APPROVE_OPTION) {
+						File file = c.getSelectedFile();
+						String file_name = file.toString();
+						if (!file_name.endsWith(PrivateKeyFileFilter.PRIVATE_KEY_FILE_EXTENSION))
+						    file_name += PrivateKeyFileFilter.PRIVATE_KEY_FILE_EXTENSION;
+							file = new File(file_name);
+						coreWallet.exportPrivateKeysToFile(file.getAbsolutePath(), password, encryptExport,
+								passwordToEncrypt);
+					}
+					;
+				} catch (IOException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+					JOptionPane.showMessageDialog(frmWow,
+						    "File save error!\n" + e1.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+				} catch (KeyCrypterException e2) {
+					e2.printStackTrace();
+					JOptionPane.showMessageDialog(frmWow,
+						    "Wallet dencryption failed!", "Error", JOptionPane.ERROR_MESSAGE);
+				} catch (PrivateKeysHandlerException e3) {
+					e3.printStackTrace();
+					JOptionPane.showMessageDialog(frmWow,
+						    "Private keys export failed!\n" + e3.getLocalizedMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+				}
+			}
+		});
+		mnTools.add(mntmExportPrivateKeys);
+		
+		JMenuItem mntmReset = new JMenuItem("Resynchronize");
+		mntmReset.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				try {
+					coreWallet.sync();
+				} catch (Exception e) {
+					e.printStackTrace();
+					JOptionPane.showMessageDialog(frmWow,
+						    "Re-sync failed!\n" + e.getLocalizedMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+				}
+			}
+		});
+		mnTools.add(mntmReset);
+		
 		JMenu mnHelp = new JMenu("Help");
 		menuBar.add(mnHelp);
 		
-		JMenuItem mntmHelp = new JMenuItem("Wow - Doge Wallet Help");
+		JMenuItem mntmHelp = new JMenuItem("WowDoge Help");
 		mnHelp.add(mntmHelp);
 		
-		JMenuItem mntmAbout = new JMenuItem("About Wow - Doge Wallet");
+		mntmAbout = new JMenuItem("About WowDoge");
 		mntmAbout.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				DialogAbout d = new DialogAbout();
@@ -448,8 +687,16 @@ public class Wow implements Runnable {
 			}
 		});
 		mnHelp.add(mntmAbout);
+		mntmAbout.setVisible(!isMac());
 		
 		tableAddressBook.setDefaultRenderer(Object.class, new AddressBookTableCellRenderer());
+		
+		if (!coreWallet.getPreferences().getBoolean("ViewTransactionsInputsOutputs", false)) {
+			tableTransactions.removeColumn(colIns);
+			tableTransactions.removeColumn(colOuts);
+		} else {
+			chckbxmntmTransactionsInputsOutputs.setState(true);
+		}
 		
 		(new Thread(this)).start();
 	}
@@ -466,9 +713,13 @@ public class Wow implements Runnable {
 	    public void actionPerformed(ActionEvent e) {
 			try {
 				File file = new File(fileFullPath);
-				coreWallet.open(file);
-				recentFilesMenu.addFileToFileHistory(fileFullPath);
-				recentFilesMenu.storeToPreferences();
+				if (file.getName().equals("wallet.dat")) {
+					showInformationAboutSatoshisWalletDat();
+				} else {
+					coreWallet.open(file);
+					recentFilesMenu.addFileToFileHistory(fileFullPath);
+					recentFilesMenu.storeToPreferences();
+				}
 			} catch (IOException ex) {
 				ex.printStackTrace();
 				JOptionPane.showMessageDialog(frmWow,
@@ -479,6 +730,14 @@ public class Wow implements Runnable {
 					    ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 			}
 	    }
+	}
+	
+	private void showInformationAboutSatoshisWalletDat() {
+		JOptionPane.showMessageDialog(frmWow,
+			    "Satoshi's 'wallet.dat' wallet file can not be opened with WowDoge!"
+			    + "\nWowDoge uses it's own light wallet format.\n"
+			    + "Create a new wallet and then send coins to the new wallet.\n"
+			    + "Or it is possible to import private keys via Tools menu.", "Information - Satoshi's 'wallet.dat' wallet file can not be opened with WowDoge", JOptionPane.INFORMATION_MESSAGE);
 	}
 
 	/**
@@ -497,9 +756,13 @@ public class Wow implements Runnable {
 						if (d.showDialog()) {
 							String path = d.getWalletFilePath();
 							File f = new File(path);
-							coreWallet.run(f.getParentFile(), f.getName());
-							mnRecent.addFileToFileHistory(path);
-							mnRecent.storeToPreferences();
+							if (f.getName().equals("wallet.dat")) {
+								showInformationAboutSatoshisWalletDat();
+							} else {
+								coreWallet.run(f.getParentFile(), f.getName());
+								mnRecent.addFileToFileHistory(path);
+								mnRecent.storeToPreferences();
+							}
 						} else {
 							System.exit(0);
 						}
@@ -527,7 +790,7 @@ public class Wow implements Runnable {
 				}
 			}
 		});
-		frmWow.setTitle("Wow - Doge Wallet");
+		frmWow.setTitle("WowDoge");
 		frmWow.setBounds(100, 100, 819, 503);
 		frmWow.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frmWow.getContentPane().setLayout(new BorderLayout(0, 0));
@@ -539,16 +802,16 @@ public class Wow implements Runnable {
 		tabbedPane.addTab("Wallet", null, panelWallet, null);
 		panelWallet.setLayout(new BorderLayout(0, 0));
 		
-		JSplitPane splitPaneWallet = new JSplitPane();
+		splitPaneWallet = new JSplitPane();
+		splitPaneWallet.setOneTouchExpandable(true);
 		panelWallet.add(splitPaneWallet, BorderLayout.CENTER);
 		
-		JPanel panelAddresses = new JPanel();
-		panelAddresses.setMinimumSize(new Dimension(200, 10));
-		panelAddresses.setPreferredSize(new Dimension(280, 10));
+		panelAddresses = new JPanel();
 		splitPaneWallet.setLeftComponent(panelAddresses);
 		panelAddresses.setLayout(new BorderLayout(0, 0));
 		
 		JScrollPane scrollPaneAddresses = new JScrollPane();
+		scrollPaneAddresses.setPreferredSize(new Dimension(280, 4));
 		scrollPaneAddresses.setAutoscrolls(true);
 		panelAddresses.add(scrollPaneAddresses, BorderLayout.CENTER);
 		
@@ -567,8 +830,17 @@ public class Wow implements Runnable {
 		btnNewAddress.setToolTipText("Create new wallet address for receiving coins");
 		btnNewAddress.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				coreWallet.createNewKeys(1);
-				System.out.println(coreWallet.getKeys());
+				int ret = JOptionPane.showConfirmDialog(
+			            frmWow,
+			            "Would you like to create a new address?",
+			            "Confirm New Address Creation",
+			            JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+				if (ret == JOptionPane.YES_OPTION) {
+					//coreWallet.createNewKeys(1);
+					//System.out.println(coreWallet.getKeys());
+					
+					createKeys(1);
+				}
 			}
 		});
 		btnNewAddress.setActionCommand("");
@@ -582,12 +854,25 @@ public class Wow implements Runnable {
 				dialog.setLocationRelativeTo(frmWow);
 				if (dialog.showDialog()) {
 					int number = dialog.getNumberOfAddressToCreate();
-					coreWallet.createNewKeys(number);
-					System.out.println(coreWallet.getKeys());
+					//coreWallet.createNewKeys(number);
+					//System.out.println(coreWallet.getKeys());
+					
+					createKeys(number);
 				}
 			}
 		});
 		toolBarAddresses.add(btnNewAddresses);
+		
+		JButton buttonZoomIn = new JButton(">");
+		buttonZoomIn.setVisible(false);
+		buttonZoomIn.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				horizontalStrutZoomOut.setVisible(true);
+				buttonZoomOut.setVisible(true);
+				panelAddresses.setVisible(false);
+			}
+		});
+		toolBarAddresses.add(buttonZoomIn);
 		
 		JSplitPane splitPaneAddressAndTransactoions = new JSplitPane();
 		splitPaneAddressAndTransactoions.setOrientation(JSplitPane.VERTICAL_SPLIT);
@@ -619,6 +904,11 @@ public class Wow implements Runnable {
 		btnDoge.setToolTipText("Send payment");
 		btnDoge.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
+				/*
+				System.out.println("WALLET OUTPUT:");
+				System.out.println(coreWallet.getWallet().toString(true, true, true, null));
+				System.out.println("WALLET OUTPUT END.");
+				*/
 				tabbedPane.setSelectedComponent(panelAddressBook);
 			}
 		});
@@ -659,16 +949,40 @@ public class Wow implements Runnable {
 		panelAddress.add(panelAddressNameBalance, BorderLayout.NORTH);
 		panelAddressNameBalance.setLayout(new BoxLayout(panelAddressNameBalance, BoxLayout.Y_AXIS));
 		
+		JPanel panel = new JPanel();
+		panelAddressNameBalance.add(panel);
+		panel.setLayout(new BorderLayout(0, 0));
+		
+		buttonZoomOut = new JButton("<");
+		buttonZoomOut.setVisible(false);
+		buttonZoomOut.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				horizontalStrutZoomOut.setVisible(false);
+				buttonZoomOut.setVisible(false);
+				panelAddresses.setVisible(true);
+				panelAddresses.setSize(panelAddresses.getPreferredSize());
+			}
+		});
+		buttonZoomOut.setMinimumSize(new Dimension(29, 29));
+		panel.add(buttonZoomOut, BorderLayout.WEST);
+		
 		JLabel lblReceivingAddress = new JLabel(" Receiving Address:");
+		lblReceivingAddress.setHorizontalAlignment(SwingConstants.CENTER);
+		panel.add(lblReceivingAddress);
 		lblReceivingAddress.setPreferredSize(new Dimension(59, 30));
 		lblReceivingAddress.setAlignmentX(Component.CENTER_ALIGNMENT);
-		panelAddressNameBalance.add(lblReceivingAddress);
+		
+		horizontalStrutZoomOut = Box.createHorizontalStrut(20);
+		horizontalStrutZoomOut.setVisible(false);
+		horizontalStrutZoomOut.setPreferredSize(new Dimension(75, 29));
+		panel.add(horizontalStrutZoomOut, BorderLayout.EAST);
 		
 		JPanel panel_1 = new JPanel();
 		panelAddressNameBalance.add(panel_1);
 		panel_1.setLayout(new BoxLayout(panel_1, BoxLayout.X_AXIS));
 		
 		txtAddress = new JTextField();
+		txtAddress.setMinimumSize(new Dimension(400, 28));
 		txtAddress.setPreferredSize(new Dimension(14, 30));
 		panel_1.add(txtAddress);
 		txtAddress.setFont(new Font("Lucida Grande", Font.PLAIN, 18));
@@ -777,10 +1091,11 @@ public class Wow implements Runnable {
 		panelTransactions.add(scrollPane, BorderLayout.CENTER);
 		
 		tableTransactions = new JTable();
+		tableTransactions.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
+		tableTransactions.setAutoCreateRowSorter(true);
 		tableTransactions.setRowHeight(30);
 		tableTransactions.setAutoscrolls(true);
-		tableTransactions.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-		tableTransactions.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+		tableTransactions.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		scrollPane.setViewportView(tableTransactions);
 		
 		panelAddressBook = new JPanel();
@@ -791,6 +1106,7 @@ public class Wow implements Runnable {
 		panelAddressBook.add(scrollPaneAddressBook, BorderLayout.CENTER);
 		
 		tableAddressBook = new JTable();
+		tableAddressBook.setAutoCreateRowSorter(true);
 		tableAddressBook.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent arg0) {
@@ -926,7 +1242,7 @@ public class Wow implements Runnable {
 		btnDelete.setToolTipText("Delete address template");
 		toolBarAddressbook.add(btnDelete);
 		
-		JButton btnSend = new JButton("Send");
+		JButton btnSend = new JButton("Send to Address");
 		btnSend.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				int row = tableAddressBook.getSelectedRow();
@@ -937,19 +1253,20 @@ public class Wow implements Runnable {
 			}
 		});
 		btnSend.setFont(new Font("Lucida Grande", Font.PLAIN, 13));
-		btnSend.setToolTipText("Send payment to address template");
+		btnSend.setToolTipText("Send coins to address template");
 		toolBarAddressbook.add(btnSend);
 		
 		Component horizontalGlue = Box.createHorizontalGlue();
 		toolBarAddressbook.add(horizontalGlue);
 		
-		JButton btnSendToAddress = new JButton("Send to Address");
+		JButton btnSendToAddress = new JButton("Send Now");
+		btnSendToAddress.setPreferredSize(new Dimension(156, 29));
 		btnSendToAddress.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				send(null, 0);
 			}
 		});
-		btnSendToAddress.setToolTipText("Send payment to specified address");
+		btnSendToAddress.setToolTipText("Send coins to address to be entered");
 		btnSendToAddress.setFont(new Font("Lucida Grande", Font.PLAIN, 14));
 		toolBarAddressbook.add(btnSendToAddress);
 		
@@ -957,13 +1274,14 @@ public class Wow implements Runnable {
 		toolBarAddressbook.add(horizontalGlue_1);
 		
 		Component horizontalStrut = Box.createHorizontalStrut(20);
-		horizontalStrut.setPreferredSize(new Dimension(110, 0));
+		horizontalStrut.setPreferredSize(new Dimension(210, 0));
 		toolBarAddressbook.add(horizontalStrut);
 		
 		JToolBar toolBarTotal = new JToolBar();
 		frmWow.getContentPane().add(toolBarTotal, BorderLayout.NORTH);
 		
-		tglbtnLock = new JToggleButton("Not Encrypted");
+		tglbtnLock = new JToggleButton("");
+		tglbtnLock.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/notencrypted.png")));
 		tglbtnLock.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
 				if (coreWallet.isEncrypted()) {
@@ -997,7 +1315,11 @@ public class Wow implements Runnable {
 			}
 		});
 		toolBarTotal.add(tglbtnLock);
-		tglbtnLock.setToolTipText("Wallet not encrypted");
+		tglbtnLock.setToolTipText("Encrypt Wallet");
+		
+		Component horizontalStrut_1 = Box.createHorizontalStrut(20);
+		horizontalStrut_1.setPreferredSize(new Dimension(10, 0));
+		toolBarTotal.add(horizontalStrut_1);
 		
 		JLabel lblTotal = new JLabel("Balance:");
 		lblTotal.setFont(new Font("Lucida Grande", Font.PLAIN, 23));
@@ -1019,7 +1341,13 @@ public class Wow implements Runnable {
 		JToolBar toolBarStatus = new JToolBar();
 		frmWow.getContentPane().add(toolBarStatus, BorderLayout.SOUTH);
 		
+		btnStatus = new JButton("Connecting...");
+		btnStatus.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/redled.png")));
+		btnStatus.setBorderPainted(false);
+		toolBarStatus.add(btnStatus);
+		
 		lblStatus = new JLabel(" Connecting...    ");
+		lblStatus.setVisible(false);
 		toolBarStatus.add(lblStatus);
 		
 		progressBarStatus = new JProgressBar();
@@ -1028,6 +1356,35 @@ public class Wow implements Runnable {
 		
 		JLabel label = new JLabel("    ");
 		toolBarStatus.add(label);
+	}
+	
+	private void createKeys(int number) {
+		try {
+			if (coreWallet.isEncrypted()) {
+				DialogPassword d = new DialogPassword();
+				d.setLocationRelativeTo(frmWow);
+				if (d.showDialog()) {
+					try {
+						if (coreWallet.checkPassword(new String(d.getPassword()))) {
+							coreWallet.createNewKeys(number, new String(d.getPassword()));
+							System.out.println(coreWallet.getKeys());
+						} else {
+							JOptionPane.showMessageDialog(frmWow,
+								    "Not correct password provided!", "Information", JOptionPane.INFORMATION_MESSAGE);
+						}
+					} catch (KeyCrypterException e) {
+						JOptionPane.showMessageDialog(frmWow,
+							    "Wallet decryption failed!", "Error", JOptionPane.ERROR_MESSAGE);
+					}
+				}
+			} else {
+				coreWallet.createNewKeys(number);
+				System.out.println(coreWallet.getKeys());
+			}
+		} catch (KeyCrypterException e) {
+			JOptionPane.showMessageDialog(frmWow,
+				    e.toString(), "Error", JOptionPane.ERROR_MESSAGE);
+		}
 	}
 	
 	private void send(String address, float amount) {
@@ -1078,8 +1435,9 @@ public class Wow implements Runnable {
 	}
 	
 	private void updateEncryptionState() {
-		tglbtnLock.setText(coreWallet.isEncrypted() ? "Encrypted" : "Not Encrypted");
-		tglbtnLock.setToolTipText(coreWallet.isEncrypted() ? "Wallet is encrypted" : "Wallet is not encrypted");
+		tglbtnLock.setIcon(new ImageIcon(coreWallet.isEncrypted() ? Wow.class.getResource("/org/wowdoge/encrypted.png") : Wow.class.getResource("/org/wowdoge/notencrypted.png")));
+		//tglbtnLock.setText(coreWallet.isEncrypted() ? "Encrypted" : "Not Encrypted");
+		tglbtnLock.setToolTipText(coreWallet.isEncrypted() ? "Decrypt Wallet" : "Encrypt Wallet"); //"Wallet is encrypted" : "Wallet is not encrypted");
 		tglbtnLock.setSelected(coreWallet.isEncrypted());
 	}
 	
@@ -1097,6 +1455,7 @@ public class Wow implements Runnable {
 	public void run() {
 		while (true) {
 			try {
+				//System.out.println(coreWallet.state());
 				//System.out.println("Hello from a thread!");
 				if (coreWallet.isDirty()) { // Setup completed
 					updateEncryptionState();
@@ -1124,19 +1483,20 @@ public class Wow implements Runnable {
 								listAddresses.setSelectedIndex(0);
 						refreshAddressAndQRCode();
 						
-						if (coreWallet.getWallet().isEncrypted()) {
-							tglbtnLock.setText("Encrypted");
-							tglbtnLock.setSelected(true);
-						} else {
-							tglbtnLock.setText("Not Encrypted");
-							tglbtnLock.setSelected(false);
-						}
+						updateEncryptionState();
+//						if (coreWallet.getWallet().isEncrypted()) {
+//							tglbtnLock.setText("Encrypted");
+//							tglbtnLock.setSelected(true);
+//						} else {
+//							tglbtnLock.setText("Not Encrypted");
+//							tglbtnLock.setSelected(false);
+//						}
 					//}
 					String textBalance = bitcoinValueToFriendlyString(coreWallet.getBalance());
-					if (!textBalance.matches(textTotalBalance.getText())) {
+					if (!textBalance.equals(textTotalBalance.getText())) {
 						this.textTotalBalance.setText(textBalance);
 					}
-					this.frmWow.setTitle(coreWallet.getWalletFilePath() + " - Wow Doge Wallet");
+					this.frmWow.setTitle("WowDoge - " + coreWallet.getWalletFilePath());
 					
 					//java.lang.Iterable<WalletTransaction> transactions = coreWallet.getWalletTransactions();
 					List<Transaction> transactions = coreWallet.getTransactionsByTime();
@@ -1148,13 +1508,12 @@ public class Wow implements Runnable {
 					
 					coreWallet.setDirty(false);
 				}
-				if (coreWallet.isRunning()) {
-					this.progressBarStatus.setVisible(false);
-					this.lblStatus.setText(" Online    ");
-					this.progressBarStatus.setToolTipText("Synchronized");
-				} else
-					if (coreWallet.isSynchronizing() != 0) {
+				if (coreWallet.isRunning()) {				
+					this.progressBarStatus.setVisible(true);
+					if (coreWallet.isSynchronizing() > 0) {
 						if (this.progressBarStatus.isIndeterminate()) {
+							this.btnStatus.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/orangeled.png")));
+							this.btnStatus.setText(" Synchronizing...    ");
 							this.lblStatus.setText(" Synchronizing...    ");
 							this.progressBarStatus.setIndeterminate(false);
 							this.progressBarStatus.setMaximum(coreWallet.isSynchronizing());
@@ -1162,9 +1521,43 @@ public class Wow implements Runnable {
 						int progress = this.progressBarStatus.getMaximum() - coreWallet.isSynchronizing();
 						int max = this.progressBarStatus.getMaximum();
 						this.progressBarStatus.setValue(progress);
-						this.progressBarStatus.setToolTipText((((float) progress) / max * 100) + "%");
-					} else
-						this.progressBarStatus.setIndeterminate(true);
+						String progressString = Math.round(((float) progress) / max * 100) + "%";
+						String progressStringS = "Synchronizing... " + progressString;
+						this.progressBarStatus.setToolTipText(progressString);
+						this.btnStatus.setToolTipText(progressStringS);
+						this.lblStatus.setToolTipText(progressStringS);
+						//if (!progressStringS.equals(textTotalBalance.getText()))
+						//	this.textTotalBalance.setText(progressStringS);
+					} else {
+						if (coreWallet.isSynchronizing() == 0) {
+							this.progressBarStatus.setVisible(false);
+							this.btnStatus.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/greenled.png")));
+							this.btnStatus.setText(" Online    ");
+							this.btnStatus.setToolTipText("Synchronized");
+							this.lblStatus.setText(" Online    ");
+							this.lblStatus.setToolTipText("Synchronized");
+							this.progressBarStatus.setToolTipText("Synchronized");
+						} else {
+							this.btnStatus.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/redled.png")));
+							this.progressBarStatus.setIndeterminate(true);
+							this.btnStatus.setText(" Connecting...    ");
+							this.lblStatus.setText(" Connecting...    ");
+							this.btnStatus.setToolTipText("Connecting");
+							this.lblStatus.setToolTipText("Connecting");
+							//if (!textTotalBalance.getText().equals("Connecting..."))
+							//	this.textTotalBalance.setText("Connecting...");
+						}
+					}
+				} else {
+					this.btnStatus.setIcon(new ImageIcon(Wow.class.getResource("/org/wowdoge/redled.png")));
+					this.progressBarStatus.setIndeterminate(true);
+					this.btnStatus.setText(" Connecting...    ");
+					this.lblStatus.setText(" Connecting...    ");
+					this.btnStatus.setToolTipText("Connecting");
+					this.lblStatus.setToolTipText("Connecting");
+					//if (!textTotalBalance.getText().equals("Connecting..."))
+					//	this.textTotalBalance.setText("Connecting...");
+				}
 				if (coreWallet.isStoreFileLocked()) {
 					JOptionPane.showMessageDialog(frmWow,
 						    "Another Wow Doge Wallet instance is already running!\nPress OK button to quit.", "Information", JOptionPane.INFORMATION_MESSAGE);
